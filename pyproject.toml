@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=40.6.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "HANK_Caching"
+authors = [
+    {name="HANK.ai", email="support@hank.ai"},
+]
+description = "Caching utilities for Python."
+keywords = ["caching", "redis", "lru", "lru-cache", "cache", "hank", "hank.ai", "python"]
+readme = {file="README.md", content-type="text/markdown"}
+license = {text="MIT License"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8, <4"
+dependencies = [
+    "cachetools>=4.2.2",
+    "redis>=2.10.6"
+]
+
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/hank-ai/HANK_Caching"
+Issues = "https://github.com/hank-ai/HANK_Caching/issues"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests"
+]
