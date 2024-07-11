@@ -116,7 +116,7 @@ def redis_lru_cache(maxsize=1000, enabled=True, quiet=True, ttl=None, arg_transf
         wrapper.hash_keys = hash_keys
         wrapper.quiet = quiet
         wrapper.quiet_cache = lambda quiet=True: setattr(wrapper, 'quiet', quiet)
-        wrapper.cache_info = None if wrapper.redis_client is None else lambda: wrapper.redis_client.llen(f"{cache_key_prefix}:keys")
+        wrapper.cache_info = (lambda: None) if wrapper.redis_client is None else lambda: wrapper.redis_client.llen(f"{cache_key_prefix}:keys")
         if wrapper.redis_client is not None:
             wrapper.cache_clear = lambda **kwargs: clear_cache(wrapper.cache_key_prefix, **kwargs)
         else:
