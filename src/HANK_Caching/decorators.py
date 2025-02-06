@@ -52,6 +52,12 @@ def redis_lru_cache(maxsize=1000, enabled=True, quiet=True, ttl=None, arg_transf
                     key = compress_key(key)
                 cache_key = f"{wrapper.cache_key_prefix}:{key}"
                 if not wrapper.quiet: print(f"Using cache_key: {cache_key}")
+                if wrapper.redis_client is None:
+                    wrapper.redis_client = RedisClientManager.get_redis_client(name=cache_id)
+                    if wrapper.redis_client is None:
+                        logging.error("Redis client is not available. Caching will be disabled.")
+                        return func(*args, **kwargs)
+
                 # Try fetching the result from Redis
                 result = wrapper.redis_client.get(cache_key)
                 if result is not None:
