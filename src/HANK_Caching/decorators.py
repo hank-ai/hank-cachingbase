@@ -59,7 +59,7 @@ def redis_lru_cache(maxsize=1000, enabled=True, quiet=True, ttl=None, arg_transf
                         return func(*args, **kwargs)
 
                 # Try fetching the result from Redis
-                result = wrapper.redis_client.get(cache_key)
+                result = wrapper.redis_client.get(cache_key) if wrapper.redis_client is not None else None
                 if result is not None:
                     if not wrapper.quiet: 
                         print(f" -> Cache hit!")
@@ -69,18 +69,19 @@ def redis_lru_cache(maxsize=1000, enabled=True, quiet=True, ttl=None, arg_transf
 
                 # Calculate the result as it's not cached
                 result = func(*args, **kwargs)
-                if ttl:
-                    wrapper.redis_client.setex(cache_key, ttl, pickle.dumps(result))
-                else:
-                    # Set the result in Redis cache
-                    wrapper.redis_client.set(cache_key, pickle.dumps(result))
+                if wrapper.redis_client is not None:
+                    if ttl:
+                        wrapper.redis_client.setex(cache_key, ttl, pickle.dumps(result))
+                    else:
+                        # Set the result in Redis cache
+                        wrapper.redis_client.set(cache_key, pickle.dumps(result))
                     
-                # Maintain a list of keys for LRU behavior
-                wrapper.redis_client.lpush(f"{wrapper.cache_key_prefix}:keys", cache_key)
-                if maxsize and wrapper.redis_client.llen(f"{cache_key_prefix}:keys") > maxsize:
-                    # Evict the oldest key
-                    oldest_key = wrapper.redis_client.rpop(f"{wrapper.cache_key_prefix}:keys")
-                    wrapper.redis_client.delete(oldest_key)
+                    # Maintain a list of keys for LRU behavior
+                    wrapper.redis_client.lpush(f"{wrapper.cache_key_prefix}:keys", cache_key)
+                    if maxsize and wrapper.redis_client.llen(f"{cache_key_prefix}:keys") > maxsize:
+                        # Evict the oldest key
+                        oldest_key = wrapper.redis_client.rpop(f"{wrapper.cache_key_prefix}:keys")
+                        wrapper.redis_client.delete(oldest_key)
                 return result
             else:
                 return func(*args, **kwargs)
@@ -102,13 +103,14 @@ def redis_lru_cache(maxsize=1000, enabled=True, quiet=True, ttl=None, arg_transf
             redis_client = RedisClientManager.get_redis_client(name=cache_id)
             prefix = f"{cache_key_prefix}:keys"
             if not quiet: print(f"Clearing cache with prefix {prefix} ...")
-            keys = redis_client.lrange(prefix, 0, -1)
-            # Delete each key
-            for key in keys:
-                if not quiet: print(f"Deleting key: {key}")
-                redis_client.delete(key)
-            # Now delete the list itself
-            redis_client.delete(f"{cache_key_prefix}:keys")
+            if redis_client is not None:
+                keys = redis_client.lrange(prefix, 0, -1)
+                # Delete each key
+                for key in keys:
+                    if not quiet: print(f"Deleting key: {key}")
+                    redis_client.delete(key)
+                # Now delete the list itself
+                redis_client.delete(f"{cache_key_prefix}:keys")
         # Attach cache control methods and state to the wrapper
         # wrapper.cache = cache
         wrapper.__getstate__ = __getstate__
@@ -122,7 +124,7 @@ def redis_lru_cache(maxsize=1000, enabled=True, quiet=True, ttl=None, arg_transf
         wrapper.hash_keys = hash_keys
         wrapper.quiet = quiet
         wrapper.quiet_cache = lambda quiet=True: setattr(wrapper, 'quiet', quiet)
-        wrapper.cache_info = None if wrapper.redis_client is None else lambda: wrapper.redis_client.llen(f"{cache_key_prefix}:keys")
+        wrapper.cache_info = (lambda: None) if wrapper.redis_client is None else lambda: wrapper.redis_client.llen(f"{cache_key_prefix}:keys")
         if wrapper.redis_client is not None:
             wrapper.cache_clear = lambda **kwargs: clear_cache(wrapper.cache_key_prefix, **kwargs)
         else:
