@@ -1,63 +1,90 @@
 from collections.abc import Mapping, Iterable
 from cachetools.keys import hashkey
 
-import inspect, pickle, logging
+import inspect, pickle, logging, time
 
 SENTINEL = object()
 class RedisClientManager:
     clients = {}
     redis_is_available = True
-    #static method to create a redis client
+    last_retry_time = 0
+    RETRY_INTERVAL_SEC = 300  # 5 minutes
+
     @staticmethod
     def get_redis_client(name="default", host=SENTINEL, port=SENTINEL, db=SENTINEL, raise_on_error=False, 
-                            check_connection=True, **kwargs):
+                         check_connection=True, **kwargs):
         """
         Create a Redis client instance. 
         If host, port, or db are not provided, use environment variables. 
         -> If environment variables are not set, use default values of localhost, 6379, and 0 respectively.
+
         Args:
-        - name: str. A name to identify the client. Useful for managing multiple clients.
-        - host: str. The Redis host. Default: localhost
-        - port: int. The Redis port. Default: 6379
-        - db: int. The Redis database. Default: 0
-        - raise_on_error: bool. Whether to raise an error if the client cannot connect to Redis.
-        - check_connection: bool. Whether to check the connection to Redis before returning the client.
+          - name: str. A name to identify the client. Useful for multiple clients.
+          - host: str. The Redis host. Default: 'localhost'
+          - port: int. The Redis port. Default: 6379
+          - db: int. The Redis database. Default: 0
+          - raise_on_error: bool. Whether to raise an error if the client cannot connect.
+          - check_connection: bool. Whether to ping Redis before returning the client.
         """
+
+        # If we have previously marked Redis unavailable:
         if not RedisClientManager.redis_is_available:
-            logging.info("Redis is not available in get_redis_client. Is redis running? Did you set your environment variables?")
-            return None
-        
-        if name not in RedisClientManager.clients:
-            import os
+            now = time.time()
+            # Check if it's time to attempt reconnect
+            if now - RedisClientManager.last_retry_time < RedisClientManager.RETRY_INTERVAL_SEC:
+                # Not time yet; skip trying again and just return None
+                logging.info("Redis is not available, skipping retry until interval has passed...")
+                return None
+            else:
+                # Enough time has passed, let's attempt a reconnect below.
+                logging.info("Retrying Redis connection...")
+
+        import os
+        try:
+            import redis
+        except ImportError:
+            logging.error("Please install the 'redis' package using 'pip install redis'")
+            if raise_on_error:
+                raise ImportError("Please install the 'redis' package using 'pip install redis'")
+            else:
+                return None
+
+        if host is SENTINEL:
+            host = os.getenv('REDIS_HOST', 'localhost')
+        if port is SENTINEL:
+            port = os.getenv('REDIS_PORT', 6379)
+        if db is SENTINEL:
+            db = os.getenv('REDIS_DB', 0)
+
+        # If we have a client already and haven't changed any settings, just return it
+        if name in RedisClientManager.clients and RedisClientManager.redis_is_available:
+            return RedisClientManager.clients[name]
+
+        # Otherwise, we create (or recreate) a client and optionally ping it
+        r = redis.Redis(host=host, port=port, db=db, **kwargs)
+        if check_connection:
             try:
-                import redis
-            except ImportError:
-                logging.error("Please install the 'redis' package using 'pip install redis'")
+                # Attempt a quick connection check
+                redis.Redis(
+                    host=host,
+                    port=port,
+                    db=db,
+                    socket_connect_timeout=1
+                ).ping()
+                # If we succeed, mark available
+                RedisClientManager.redis_is_available = True
+            except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
+                logging.error(f"Error connecting to Redis: {e}")
+                RedisClientManager.redis_is_available = False
+                # update last_retry_time to now
+                RedisClientManager.last_retry_time = time.time()
                 if raise_on_error:
-                    raise ImportError("Please install the 'redis' package using 'pip install redis'")
+                    raise e
                 else:
                     return None
-            
-            if host is SENTINEL:
-                host = os.getenv('REDIS_HOST', 'localhost')
-            if port is SENTINEL:
-                port = os.getenv('REDIS_PORT', 6379)
-            if db is SENTINEL:
-                db = os.getenv('REDIS_DB', 0)
-            r = redis.Redis(host=host, port=port, db=db, **kwargs)
-            if check_connection:
-                try:
-                    #r.ping(socket_connect_timeout=1)
-                    redis.Redis(host=host, port=port, db=db, socket_connect_timeout=1).ping()
-                except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
-                    logging.error(f"Error connecting to Redis: {e}")
-                    RedisClientManager.redis_is_available = False
-                    if raise_on_error:
-                        raise e
-                    else:
-                        return None
-            RedisClientManager.clients[name] = r
-        return RedisClientManager.clients[name]
+
+        RedisClientManager.clients[name] = r
+        return r
 
 def make_hashable(o):
     """ Use a non-recursive approach for common types for efficiency. """
