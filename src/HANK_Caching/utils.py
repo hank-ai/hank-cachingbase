@@ -6,6 +6,7 @@ import inspect, pickle, logging
 SENTINEL = object()
 class RedisClientManager:
     clients = {}
+    redis_is_available = True
     #static method to create a redis client
     @staticmethod
     def get_redis_client(name="default", host=SENTINEL, port=SENTINEL, db=SENTINEL, raise_on_error=False, 
@@ -22,6 +23,10 @@ class RedisClientManager:
         - raise_on_error: bool. Whether to raise an error if the client cannot connect to Redis.
         - check_connection: bool. Whether to check the connection to Redis before returning the client.
         """
+        if not RedisClientManager.redis_is_available:
+            logging.info("Redis is not available in get_redis_client. Is redis running? Did you set your environment variables?")
+            return None
+        
         if name not in RedisClientManager.clients:
             import os
             try:
@@ -46,6 +51,7 @@ class RedisClientManager:
                     redis.Redis(host=host, port=port, db=db, socket_connect_timeout=1).ping()
                 except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
                     logging.error(f"Error connecting to Redis: {e}")
+                    RedisClientManager.redis_is_available = False
                     if raise_on_error:
                         raise e
                     else:

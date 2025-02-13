@@ -128,7 +128,7 @@ def redis_lru_cache(maxsize=1000, enabled=True, quiet=True, ttl=None, arg_transf
         if wrapper.redis_client is not None:
             wrapper.cache_clear = lambda **kwargs: clear_cache(wrapper.cache_key_prefix, **kwargs)
         else:
-            wrapper.cache_clear = lambda: None
+            wrapper.cache_clear = lambda **kwargs: None
         wrapper.enable_cache = lambda: setattr(wrapper, 'enabled', True)
         if allow_disable:
             wrapper.disable_cache = lambda quiet=True: setattr(wrapper, 'enabled', False) or (not quiet and print(f"Disabled caching for {func.__name__}"))
