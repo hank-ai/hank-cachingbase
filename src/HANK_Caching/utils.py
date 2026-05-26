@@ -55,13 +55,20 @@ class RedisClientManager:
             port = os.getenv('REDIS_PORT', 6379)
         if db is SENTINEL:
             db = os.getenv('REDIS_DB', 0)
+        # Honor REDIS_PASSWORD env var when caller didn't pass one explicitly.
+        # Managed Redis (Railway, Upstash, etc.) requires AUTH; without this,
+        # the ping below fails with "Authentication required" and the client
+        # gets marked unavailable for RETRY_INTERVAL_SEC.
+        password = kwargs.pop('password', None)
+        if password is None:
+            password = os.getenv('REDIS_PASSWORD')
 
         # If we have a client already and haven't changed any settings, just return it
         if name in RedisClientManager.clients and RedisClientManager.redis_is_available:
             return RedisClientManager.clients[name]
 
         # Otherwise, we create (or recreate) a client and optionally ping it
-        r = redis.Redis(host=host, port=port, db=db, **kwargs)
+        r = redis.Redis(host=host, port=port, db=db, password=password, **kwargs)
         if check_connection:
             try:
                 # Attempt a quick connection check
@@ -69,6 +76,7 @@ class RedisClientManager:
                     host=host,
                     port=port,
                     db=db,
+                    password=password,
                     socket_connect_timeout=1
                 ).ping()
                 # If we succeed, mark available
